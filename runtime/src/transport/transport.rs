@@ -1,6 +1,6 @@
 use crate::protocol::DiscoverMessage;
 use tokio::net::UdpSocket;
-
+use crate::constants;
 pub struct Transport {
     udp_socket: Option<UdpSocket>,
 }
@@ -15,12 +15,14 @@ impl Transport {
     pub async fn initialize(&mut self) {
         use std::net::{Ipv4Addr, UdpSocket as StdUdpSocket};
 
-        let std_socket = StdUdpSocket::bind("0.0.0.0:53317")
+        let std_socket = StdUdpSocket::bind(format!("0.0.0.0:{}", constants::MULTICAST_PORT))
             .expect("Failed to bind UDP socket");
 
         std_socket
             .join_multicast_v4(
-                &Ipv4Addr::new(224, 0, 0, 167),
+                &constants::MULTICAST_GROUP
+                .parse::<Ipv4Addr>()
+                .expect("Invalid multicast group"),
                 &Ipv4Addr::UNSPECIFIED,
             )
             .expect("Failed to join multicast group");
@@ -34,7 +36,7 @@ impl Transport {
 
         self.udp_socket = Some(socket);
 
-        println!("UDP socket listening on 53317");
+        println!("UDP socket listening on 55317");
     }
 
     pub async fn receive(
@@ -82,10 +84,16 @@ impl Transport {
             .as_ref()
             .expect("UDP socket not initialized");
 
-        socket
-            .send_to(data, "224.0.0.167:53317")
-            .await
-            .expect("Failed to send multicast packet");
+            let address = format!(
+                "{}:{}",
+                constants::MULTICAST_GROUP,
+                constants::MULTICAST_PORT
+            );
+            
+            socket
+                .send_to(data, &address)
+                .await
+                .expect("Failed to send multicast packet");
 
         println!("Multicasted {} bytes", data.len());
     }

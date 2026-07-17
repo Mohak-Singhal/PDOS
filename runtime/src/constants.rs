@@ -6,4 +6,4 @@ pub const NODE_TIMEOUT_SECS: u64 = 15;
 
 pub const DEFAULT_HTTP_PORT: u16 = 8080;
 pub const MULTICAST_GROUP: &str = "239.255.100.100";
-pub const MULTICAST_PORT: u16 = 53317;
+pub const MULTICAST_PORT: u16 = 55317;

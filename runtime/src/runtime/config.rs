@@ -23,7 +23,7 @@ impl Default for Config {
             device_type: DeviceType::Laptop,
             operating_system: OperatingSystem::MacOS,
         
-            udp_port: 53317,
+            udp_port: constants::MULTICAST_PORT,
             http_port: constants::DEFAULT_HTTP_PORT,
         
             capabilities: vec![
