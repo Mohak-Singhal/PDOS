@@ -49,10 +49,13 @@ impl Transport {
 
         let mut buffer = [0u8; 2048];
 
+
         let (size, sender) = socket
             .recv_from(&mut buffer)
             .await
             .expect("Failed to receive UDP packet");
+
+        println!("Received {} bytes from {}", size, sender);
 
         let json = match std::str::from_utf8(&buffer[..size]) {
             Ok(value) => value,
