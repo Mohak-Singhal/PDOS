@@ -33,93 +33,109 @@ impl Transport {
             .parse()
             .expect("Invalid multicast group");
 
-        let socket = Socket::new(
-            Domain::IPV4,
-            Type::DGRAM,
-            Some(Protocol::UDP),
-        )
-        .expect("Failed to create socket");
+        let socket = match Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to create UDP socket: {}", e);
+                return;
+            }
+        };
 
-        socket
-            .bind(&SockAddr::from(std::net::SocketAddrV4::new(
-                Ipv4Addr::UNSPECIFIED,
-                constants::MULTICAST_PORT,
-            )))
-            .expect("Failed to bind UDP socket");
+        let _ = socket.set_reuse_address(true);
 
-        socket
-            .join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED)
-            .expect("Failed to join multicast group");
+        let addr = SockAddr::from(std::net::SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            constants::MULTICAST_PORT,
+        ));
 
-        socket.set_broadcast(true).expect("Failed to set broadcast");
-        socket.set_multicast_ttl_v4(2).expect("Failed to set multicast TTL");
-        socket.set_multicast_loop_v4(true).expect("Failed to set multicast loopback");
+        if let Err(e) = socket.bind(&addr) {
+            log::error!("Failed to bind UDP socket: {}", e);
+            return;
+        }
 
-        // Explicitly set outgoing multicast interface to a non-loopback IPv4 address
+        if let Err(e) = socket.join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED) {
+            log::warn!("Failed to join multicast group: {} (proceeding anyway)", e);
+        }
+
+        let _ = socket.set_broadcast(true);
+        let _ = socket.set_multicast_ttl_v4(2);
+        let _ = socket.set_multicast_loop_v4(true);
+
         if let Some(local_ip) = Self::find_local_ip() {
-            socket
-                .set_multicast_if_v4(&local_ip)
-                .unwrap_or_else(|_| {
-                    log::info!("Could not set multicast IF to {}, using default", local_ip);
-                });
+            if let Err(_) = socket.set_multicast_if_v4(&local_ip) {
+                log::info!("Could not set multicast IF to {}, using default", local_ip);
+            }
             log::info!("Set multicast interface to {}", local_ip);
         }
 
-        socket
-            .set_nonblocking(true)
-            .expect("Failed to set nonblocking");
+        let _ = socket.set_nonblocking(true);
 
         let std_socket: StdUdpSocket = socket.into();
-        let tokio_socket = UdpSocket::from_std(std_socket).expect("Failed to create Tokio socket");
+
+        let tokio_socket = match UdpSocket::from_std(std_socket) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to create Tokio socket: {}", e);
+                return;
+            }
+        };
 
         self.udp_socket = Some(tokio_socket);
 
         log::info!("UDP socket listening on {}", constants::MULTICAST_PORT);
     }
 
+    fn subnet_broadcast(local_ip: Ipv4Addr) -> String {
+        let ip_bits = u32::from(local_ip);
+        let broadcast = ip_bits | 0x000000FF;
+        let broadcast_ip = Ipv4Addr::from(broadcast);
+        format!("{}:{}", broadcast_ip, constants::MULTICAST_PORT)
+    }
+
+    pub async fn send_to(&self, packet: &Packet, target: &str) {
+        let socket = match self.udp_socket.as_ref() {
+            Some(s) => s,
+            None => return,
+        };
+
+        let data = match serde_json::to_vec(packet) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+
+        let _ = socket.send_to(&data, target).await;
+
+        log::info!("Unicasted {} bytes to {}", data.len(), target);
+    }
+
     pub async fn receive(&self) -> Option<(Packet, std::net::SocketAddr)> {
-        let socket = self
-            .udp_socket
-            .as_ref()
-            .expect("UDP socket not initialized");
+        let socket = self.udp_socket.as_ref()?;
 
         let mut buffer = [0u8; 4096];
 
-        let (size, sender) = socket
-            .recv_from(&mut buffer)
-            .await
-            .expect("Failed to receive UDP packet");
+        let (size, sender) = socket.recv_from(&mut buffer).await.ok()?;
 
         log::info!("Received {} bytes from {}", size, sender);
 
-        let json = match std::str::from_utf8(&buffer[..size]) {
-            Ok(value) => value,
-            Err(_) => {
-                log::info!("Invalid UTF-8 packet");
-                return None;
-            }
-        };
+        let json = std::str::from_utf8(&buffer[..size]).ok()?;
 
         log::info!("{}", json);
 
-        let packet = match serde_json::from_str::<Packet>(json) {
-            Ok(packet) => packet,
-            Err(err) => {
-                log::info!("Invalid packet: {}", err);
-                return None;
-            }
-        };
+        let packet = serde_json::from_str::<Packet>(json).ok()?;
 
         Some((packet, sender))
     }
 
     pub async fn send(&self, packet: &Packet) {
-        let socket = self
-            .udp_socket
-            .as_ref()
-            .expect("UDP socket not initialized");
+        let socket = match self.udp_socket.as_ref() {
+            Some(s) => s,
+            None => return,
+        };
 
-        let data = serde_json::to_vec(packet).expect("Failed to serialize packet");
+        let data = match serde_json::to_vec(packet) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
 
         let multicast_addr = format!(
             "{}:{}",
@@ -127,14 +143,17 @@ impl Transport {
             constants::MULTICAST_PORT
         );
 
-        socket
-            .send_to(&data, &multicast_addr)
-            .await
-            .expect("Failed to send multicast packet");
+        let _ = socket.send_to(&data, &multicast_addr).await;
 
-        // Also broadcast to the subnet as a fallback for networks that block multicast
-        let broadcast_addr = format!("255.255.255.255:{}", constants::MULTICAST_PORT);
-        let _ = socket.send_to(&data, &broadcast_addr).await;
+        // Global broadcast fallback (some networks block multicast)
+        let global_broadcast = format!("255.255.255.255:{}", constants::MULTICAST_PORT);
+        let _ = socket.send_to(&data, &global_broadcast).await;
+
+        // Subnet-directed broadcast fallback (Samsung hotspots often block the above)
+        if let Some(local_ip) = Self::find_local_ip() {
+            let subnet_bcast = Self::subnet_broadcast(local_ip);
+            let _ = socket.send_to(&data, &subnet_bcast).await;
+        }
 
         log::info!("Multicasted {} bytes", data.len());
     }

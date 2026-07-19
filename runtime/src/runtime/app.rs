@@ -114,7 +114,7 @@ impl Runtime {
                 result = self.transport.receive() => {
 
                     if let Some((packet, sender)) = result {
-                        let responds_to_discover = matches!(packet, Packet::Discover(_));
+                        let responds_to_discover = matches!(&packet, Packet::Discover(msg) if msg.identity.node_id != self.identity.node_id);
 
                         self.event_loop.dispatch(
                             RuntimeEvent::NetworkPacket {
@@ -131,15 +131,17 @@ impl Runtime {
                         
                         self.registry.update_node_states();
 
-                        // Respond to Discover packets so that nodes that start later
-                        // still provoke a response from already-running nodes.
-                        // Rate-limited to avoid infinite loops.
+                        // Respond to foreign Discover packets with a direct unicast.
+                        // This is critical for phone hotspots (Samsung, etc.) where
+                        // broadcasts from the AP back to clients are often blocked.
                         if responds_to_discover
                             && self.last_discover_response.elapsed() >= DISCOVER_RESPONSE_COOLDOWN
                         {
                             self.last_discover_response = Instant::now();
                             let discover = self.create_discover_message();
-                            self.send_packet(Packet::Discover(discover)).await;
+                            let target = format!("{}:{}", sender.ip(), constants::MULTICAST_PORT);
+                            log::info!("Responding to Discover from {} via unicast", target);
+                            self.transport.send_to(&Packet::Discover(discover), &target).await;
                         }
                     }
                 }
