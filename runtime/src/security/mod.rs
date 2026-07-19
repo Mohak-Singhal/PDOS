@@ -1,3 +1,3 @@
 pub fn init() {
-    println!("Security initialized");
+    log::info!("Security initialized");
 }

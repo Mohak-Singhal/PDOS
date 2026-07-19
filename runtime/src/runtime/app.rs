@@ -1,4 +1,4 @@
-use tokio::time::{Duration, interval};
+use tokio::time::{Duration, Instant, interval};
 
 use crate::constants;
 use crate::discovery::Discovery;
@@ -19,6 +19,7 @@ use super::Config;
 use crate::events::RuntimeEvent;
 use super::RuntimeEventLoop; //use crate::runtime::RuntimeEventLoop;
 use super::RuntimeContext;
+const DISCOVER_RESPONSE_COOLDOWN: Duration = Duration::from_secs(5);
 pub struct Runtime {
     config: Config,
     identity: Identity,
@@ -28,6 +29,7 @@ pub struct Runtime {
     discovery: Discovery,
     liveness: Liveness,
     event_loop: RuntimeEventLoop,
+    last_discover_response: Instant,
 }
 impl Runtime {
     pub fn new(config: Config, identity: Identity) -> Self {
@@ -39,6 +41,7 @@ impl Runtime {
             discovery: Discovery::new(),
             liveness: Liveness::new(),
             event_loop: RuntimeEventLoop::new(),
+            last_discover_response: Instant::now() - DISCOVER_RESPONSE_COOLDOWN,
         }
     }
 
@@ -71,13 +74,12 @@ impl Runtime {
     pub async fn start(&mut self) {
         let mut heartbeat = interval(self.liveness.interval());
 
-        println!("Runtime starting...");
-        println!("Node ID: {}", self.identity.node_id);
+        log::info!("Runtime starting...");
+        log::info!("Node ID: {}", self.identity.node_id);
 
         let discover = self.create_discover_message();
 
-        println!("\nDiscoverMessage:");
-        println!("{}", serde_json::to_string_pretty(&discover).unwrap());
+        log::info!("DiscoverMessage: {}", serde_json::to_string_pretty(&discover).unwrap());
 
         security::init();
 
@@ -86,8 +88,8 @@ impl Runtime {
         self.transport.initialize().await;
         self.discovery.initialize();
 
-        println!("Runtime ready.");
-        println!("Waiting for discovery packets...");
+        log::info!("Runtime ready.");
+        log::info!("Waiting for discovery packets...");
 
         // Send discovery ONCE at startup.
         self.send_packet(Packet::Discover(discover)).await;
@@ -112,6 +114,7 @@ impl Runtime {
                 result = self.transport.receive() => {
 
                     if let Some((packet, sender)) = result {
+                        let responds_to_discover = matches!(packet, Packet::Discover(_));
 
                         self.event_loop.dispatch(
                             RuntimeEvent::NetworkPacket {
@@ -127,6 +130,17 @@ impl Runtime {
                         );
                         
                         self.registry.update_node_states();
+
+                        // Respond to Discover packets so that nodes that start later
+                        // still provoke a response from already-running nodes.
+                        // Rate-limited to avoid infinite loops.
+                        if responds_to_discover
+                            && self.last_discover_response.elapsed() >= DISCOVER_RESPONSE_COOLDOWN
+                        {
+                            self.last_discover_response = Instant::now();
+                            let discover = self.create_discover_message();
+                            self.send_packet(Packet::Discover(discover)).await;
+                        }
                     }
                 }
             }

@@ -13,7 +13,7 @@ impl Discovery {
     }
 
     pub fn initialize(&self) {
-        println!("Discovery initialized");
+        log::info!("Discovery initialized");
     }
 
     pub fn handle_packet(
@@ -43,7 +43,7 @@ impl Discovery {
     ) {
         // 1. Validate packet
         if !message.is_valid() {
-            println!("Ignoring invalid discovery packet.");
+            log::info!("Ignoring invalid discovery packet.");
             return;
         }
     
@@ -54,7 +54,7 @@ impl Discovery {
     
         // 3. Check protocol compatibility
         if message.runtime.protocol_version != crate::constants::PROTOCOL_VERSION {
-            println!(
+            log::info!(
                 "Ignoring incompatible protocol version: {}",
                 message.runtime.protocol_version
             );
@@ -75,7 +75,7 @@ impl Discovery {
     ) {
         // Validate heartbeat
         if !message.is_valid() {
-            println!("Ignoring invalid heartbeat.");
+            log::info!("Ignoring invalid heartbeat.");
             return;
         }
     

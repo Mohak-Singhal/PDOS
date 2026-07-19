@@ -15,3 +15,16 @@ rand = "0.8"
 dirs = "6"
 base64 = "0.22"
 sysinfo = "0.37"
+jni = "0.21"
+log = "0.4"
+socket2 = "0.5"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.15"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+env_logger = "0.11"
+
+[lib]
+name = "runtime"
+crate-type = ["rlib", "cdylib"]

@@ -6,7 +6,11 @@ use dirs::home_dir;
 use super::Identity;
 
 fn identity_file() -> PathBuf {
-    let mut path = home_dir().expect("Unable to locate home directory");
+    let mut path = if let Some(dir) = crate::APP_DATA_DIR.get() {
+        PathBuf::from(dir)
+    } else {
+        home_dir().expect("Unable to locate home directory")
+    };
 
     path.push(".pdos");
 
@@ -35,7 +39,7 @@ pub fn load() -> Identity {
 
 pub fn save(identity: &Identity) {
     let path = identity_file();
-    println!("Identity file: {}", path.display());
+    log::info!("Identity file: {}", path.display());
 
     let json = serde_json::to_string_pretty(identity).unwrap();
 

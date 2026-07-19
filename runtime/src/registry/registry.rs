@@ -15,7 +15,7 @@ impl Registry {
     }
 
     pub fn initialize(&self) {
-        println!("Registry initialized");
+        log::info!("Registry initialized");
     }
 
     pub fn upsert_node(&mut self, node: Node) {
@@ -39,10 +39,10 @@ impl Registry {
 
             existing.update_from_discovery(&node);
             if recovered {
-                println!("Device came back online: {}", existing.name);
+                log::info!("Device came back online: {}", existing.name);
             }
         } else {
-            println!("New device discovered: {}", node.name);
+            log::info!("New device discovered: {}", node.name);
 
             self.nodes.insert(node.id.clone(), node);
         }
