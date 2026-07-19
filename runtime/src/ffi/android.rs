@@ -6,6 +6,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static RUNTIME_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_pdos_PDOSNative_setDeviceName(
+    mut env: JNIEnv,
+    _class: JClass,
+    name: JString,
+) {
+    let name: String = env
+        .get_string(&name)
+        .expect("Failed to get device name string")
+        .into();
+    let _ = crate::DEVICE_NAME.set(name);
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_pdos_PDOSNative_startRuntime(
     mut env: JNIEnv,
     _class: JClass,
@@ -77,9 +90,11 @@ pub extern "system" fn Java_dev_pdos_PDOSNative_connectedNodes(
     _env: JNIEnv,
     _class: JClass,
 ) -> jint {
-    // TODO: Return the real registry size once the runtime
-    // exposes it through a shared state.
-    0
+    if let Ok(list) = crate::NODE_LIST.lock() {
+        list.len() as jint
+    } else {
+        0
+    }
 }
 
 #[unsafe(no_mangle)]

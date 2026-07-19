@@ -18,6 +18,8 @@ use runtime::{Config, Runtime};
 use std::sync::{Once, OnceLock};
 
 pub(crate) static APP_DATA_DIR: OnceLock<String> = OnceLock::new();
+pub(crate) static DEVICE_NAME: OnceLock<String> = OnceLock::new();
+pub(crate) static NODE_LIST: std::sync::Mutex<Vec<crate::models::Node>> = std::sync::Mutex::new(Vec::new());
 static LOG_INIT: Once = Once::new();
 
 pub fn init_logging() {

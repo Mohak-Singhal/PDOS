@@ -107,6 +107,9 @@ impl Runtime {
                         &self.identity,
                         &mut self.registry,
                     );
+
+                    self.registry.update_node_states();
+                    self.sync_node_list();
                     
                     self.send_packet(packet).await;
                 }
@@ -130,10 +133,12 @@ impl Runtime {
                         );
                         
                         self.registry.update_node_states();
+                        self.sync_node_list();
 
-                        // Respond to foreign Discover packets with a direct unicast.
-                        // This is critical for phone hotspots (Samsung, etc.) where
-                        // broadcasts from the AP back to clients are often blocked.
+                                        // Respond to foreign Discover packets with a direct unicast
+                        // instead of broadcast. On phone hotspots (Samsung, etc.) the
+                        // AP does not bridge broadcast/multicast from the phone itself
+                        // back to its clients — a direct unicast bypasses this block.
                         if responds_to_discover
                             && self.last_discover_response.elapsed() >= DISCOVER_RESPONSE_COOLDOWN
                         {
@@ -146,6 +151,12 @@ impl Runtime {
                     }
                 }
             }
+        }
+    }
+    fn sync_node_list(&self) {
+        let nodes: Vec<Node> = self.registry.list_nodes().into_iter().cloned().collect();
+        if let Ok(mut list) = crate::NODE_LIST.lock() {
+            *list = nodes;
         }
     }
     pub fn local_node_id(&self) -> &str {

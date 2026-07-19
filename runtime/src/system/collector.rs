@@ -10,7 +10,11 @@ impl SystemCollector {
         let mut system = System::new_all();
         system.refresh_all();
 
-        let hostname = get().unwrap_or_default().to_string_lossy().to_string();
+        let hostname = if let Some(name) = crate::DEVICE_NAME.get() {
+            name.clone()
+        } else {
+            get().unwrap_or_default().to_string_lossy().to_string()
+        };
 
         let os_version = System::long_os_version().unwrap_or_else(|| "Unknown".to_string());
 

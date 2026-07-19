@@ -6,6 +6,8 @@ object PDOSNative {
         System.loadLibrary("runtime")
     }
 
+    external fun setDeviceName(name: String)
+
     external fun startRuntime(filesDir: String)
 
     external fun stopRuntime()

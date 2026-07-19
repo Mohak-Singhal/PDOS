@@ -3,6 +3,7 @@ package dev.pdos
 import android.app.Application
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.util.Log
 
 class PDOSApplication : Application() {
@@ -11,6 +12,8 @@ class PDOSApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        PDOSNative.setDeviceName(Build.MODEL)
 
         try {
             val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
