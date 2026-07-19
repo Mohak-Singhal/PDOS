@@ -1,9 +1,19 @@
 pub mod capability;
+pub mod device_info;
 pub mod device_type;
-pub mod operating_system;
+pub mod identity_info;
+pub mod network_info;
 pub mod node;
+pub mod node_state;
+pub mod operating_system;
+pub mod runtime_info;
 
 pub use capability::Capability;
+pub use device_info::DeviceInfo;
 pub use device_type::DeviceType;
-pub use operating_system::OperatingSystem;
+pub use identity_info::IdentityInfo;
+pub use network_info::NetworkInfo;
 pub use node::Node;
+pub use node_state::NodeState;
+pub use operating_system::OperatingSystem;
+pub use runtime_info::RuntimeInfo;

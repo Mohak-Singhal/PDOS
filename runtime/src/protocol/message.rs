@@ -1,63 +1,74 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::{
-    Capability,
-    DeviceType,
-    OperatingSystem,
-};
+use crate::models::{Capability, DeviceInfo, IdentityInfo, NetworkInfo, RuntimeInfo};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoverMessage {
-    pub protocol_version: u16,
-
-    pub node_id: String,
-    pub device_name: String,
-    pub device_type: DeviceType,
-    pub operating_system: OperatingSystem,
-
+    pub identity: IdentityInfo,
+    pub device: DeviceInfo,
+    pub runtime: RuntimeInfo,
+    pub network: NetworkInfo,
     pub capabilities: Vec<Capability>,
-
-    pub http_port: u16,
+    pub timestamp: u64,
 }
 
 impl DiscoverMessage {
     pub fn new(
-        protocol_version: u16,
-        node_id: String,
-        device_name: String,
-        device_type: DeviceType,
-        operating_system: OperatingSystem,
+        identity: IdentityInfo,
+        device: DeviceInfo,
+        runtime: RuntimeInfo,
+        network: NetworkInfo,
         capabilities: Vec<Capability>,
-        http_port: u16,
+        timestamp: u64,
     ) -> Self {
         Self {
-            protocol_version,
-            node_id,
-            device_name,
-            device_type,
-            operating_system,
+            identity,
+            device,
+            runtime,
+            network,
             capabilities,
-            http_port,
+            timestamp,
         }
     }
 
     pub fn is_valid(&self) -> bool {
-        if self.protocol_version != 1 {
+        if self.identity.node_id.trim().is_empty() {
             return false;
         }
-    
-        if self.node_id.trim().is_empty() {
+
+        if self.device.hostname.trim().is_empty() {
             return false;
         }
-    
-        if self.device_name.trim().is_empty() {
+
+        if self.network.http_port == 0 {
             return false;
         }
-    
-        if self.http_port == 0 {
+        if self.timestamp == 0 {
             return false;
         }
-    
+
         true
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeartbeatMessage {
+    pub node_id: String,
+    pub timestamp: u64,
+}
+
+impl HeartbeatMessage {
+    pub fn new(node_id: String, timestamp: u64) -> Self {
+        Self { node_id, timestamp }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.node_id.trim().is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Packet {
+    Discover(DiscoverMessage),
+    Heartbeat(HeartbeatMessage),
 }

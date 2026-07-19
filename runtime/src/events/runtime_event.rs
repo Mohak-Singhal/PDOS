@@ -1,9 +1,13 @@
 use std::net::SocketAddr;
 
+use crate::protocol::Packet;
+
 #[derive(Debug)]
 pub enum RuntimeEvent {
     NetworkPacket {
-        bytes: Vec<u8>,
+        packet: Packet,
         sender: SocketAddr,
     },
+
+    HeartbeatTick,
 }

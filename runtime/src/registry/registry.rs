@@ -1,16 +1,8 @@
+
+use crate::constants::{OFFLINE_TIMEOUT_SECS, SUSPECT_TIMEOUT_SECS};
+use crate::models::{Capability, DeviceType, Node, NodeState, OperatingSystem};
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
-use crate::constants;
-use crate::models::{
-    Capability,
-    DeviceType,
-    Node,
-    OperatingSystem,
-};
-
-// Nodes are considered offline if they haven't been seen for 15 seconds.
-const NODE_TIMEOUT: Duration = Duration::from_secs(constants::NODE_TIMEOUT_SECS);
-
+use std::time::SystemTime;
 pub struct Registry {
     nodes: HashMap<String, Node>,
 }
@@ -27,30 +19,52 @@ impl Registry {
     }
 
     pub fn upsert_node(&mut self, node: Node) {
-        if self.nodes.contains_key(&node.id) {
-            println!("Updated device: {}", node.name);
-        } else {
-            println!("New device discovered: {}", node.name);
-        }
-    
-        self.nodes.insert(node.id.clone(), node);
-    }
+        if let Some(existing) = self.nodes.get_mut(&node.id) {
+            // Compare first
 
-    pub fn remove_stale_nodes(&mut self) {
-        let now = SystemTime::now();
-
-        self.nodes.retain(|_, node| {
-            let alive = match now.duration_since(node.last_seen) {
-                Ok(elapsed) => elapsed < NODE_TIMEOUT,
-                Err(_) => true,
-            };
-
-            if !alive {
-                println!("Node timed out: {}", node.name);
+            if existing.ip != node.ip {
+                println!("IP changed: {} -> {}", existing.ip, node.ip);
             }
 
-            alive
-        });
+            if existing.name != node.name {
+                println!("Hostname changed: {} -> {}", existing.name, node.name);
+            }
+
+            if existing.capabilities != node.capabilities {
+                println!("Capabilities updated.");
+            }
+
+            // Then update fields
+            let recovered = existing.state == NodeState::Offline;
+
+            existing.update_from_discovery(&node);
+            if recovered {
+                println!("Device came back online: {}", existing.name);
+            }
+        } else {
+            println!("New device discovered: {}", node.name);
+
+            self.nodes.insert(node.id.clone(), node);
+        }
+    }
+
+    pub fn update_node_states(&mut self) {
+        let now = SystemTime::now();
+
+        for node in self.nodes.values_mut() {
+            let elapsed = now
+                .duration_since(node.last_heartbeat)
+                .unwrap_or_default()
+                .as_secs();
+
+            if elapsed >= OFFLINE_TIMEOUT_SECS {
+                node.state = NodeState::Offline;
+            } else if elapsed >= SUSPECT_TIMEOUT_SECS {
+                node.state = NodeState::Suspect;
+            } else {
+                node.state = NodeState::Alive;
+            }
+        }
     }
 
     pub fn remove_node(&mut self, id: &str) {
@@ -73,34 +87,38 @@ impl Registry {
     pub fn list_nodes(&self) -> Vec<&Node> {
         self.nodes.values().collect()
     }
-    pub fn find_by_capability(
-        &self,
-        capability: Capability,
-    ) -> Vec<&Node> {
+    pub fn online_nodes(&self) -> Vec<&Node> {
         self.nodes
             .values()
-            .filter(|node| {
-                node.capabilities.contains(&capability)
-            })
+            .filter(|node| node.state == NodeState::Alive)
             .collect()
     }
-    pub fn find_by_device_type(
-        &self,
-        device_type: DeviceType,
-    ) -> Vec<&Node> {
+    pub fn find_by_capability(&self, capability: Capability) -> Vec<&Node> {
+        self.nodes
+            .values()
+            .filter(|node| node.capabilities.contains(&capability))
+            .collect()
+    }
+    pub fn find_by_device_type(&self, device_type: DeviceType) -> Vec<&Node> {
         self.nodes
             .values()
             .filter(|node| node.device_type == device_type)
             .collect()
     }
-    pub fn find_by_operating_system(
-        &self,
-        operating_system: OperatingSystem,
-    ) -> Vec<&Node> {
+    pub fn find_by_operating_system(&self, operating_system: OperatingSystem) -> Vec<&Node> {
         self.nodes
             .values()
             .filter(|node| node.operating_system == operating_system)
             .collect()
+    }
+    pub fn heartbeat(&mut self, node_id: &str) {
+        if let Some(node) = self.nodes.get_mut(node_id) {
+            let now = SystemTime::now();
+
+            node.last_seen = now;
+            node.last_heartbeat = now;
+            node.state = NodeState::Alive;
+        }
     }
 
     pub fn print_nodes(&self) {
@@ -108,26 +126,26 @@ impl Registry {
         println!("==============================");
         println!("Discovered Devices");
         println!("==============================");
-    
+
         if self.nodes.is_empty() {
             println!("No devices discovered.");
             return;
         }
-    
+
         for node in self.nodes.values() {
             println!("Name      : {}", node.name);
             println!("Node ID   : {}", node.id);
             println!("IP        : {}", node.ip);
             println!("Port      : {}", node.port);
-    
+
             println!("Type      : {:?}", node.device_type);
             println!("OS        : {:?}", node.operating_system);
-    
+
             println!("Capabilities:");
             for capability in &node.capabilities {
                 println!("  • {:?}", capability);
             }
-    
+
             println!("Last Seen : {:?}", node.last_seen);
             println!();
         }

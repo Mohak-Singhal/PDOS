@@ -1,3 +1,3 @@
 mod message;
 
-pub use message::DiscoverMessage;
+pub use message::{DiscoverMessage, HeartbeatMessage, Packet};

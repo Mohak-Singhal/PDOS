@@ -1,5 +1,12 @@
-use crate::events::RuntimeEvent;
 
+
+use crate::{
+    discovery::Discovery,
+    events::RuntimeEvent,
+    liveness::Liveness,
+    registry::Registry,
+};
+use super::RuntimeContext; //use crate::runtime::RuntimeContext;
 pub struct RuntimeEventLoop;
 
 impl RuntimeEventLoop {
@@ -7,15 +14,31 @@ impl RuntimeEventLoop {
         Self
     }
 
-    pub async fn handle(&mut self, event: RuntimeEvent) {
+    pub fn dispatch(
+        &self,
+        event: RuntimeEvent,
+        mut context: RuntimeContext,
+    ) {
         match event {
-            RuntimeEvent::NetworkPacket { bytes, sender } => {
-                println!(
-                    "Runtime Event: {} bytes from {}",
-                    bytes.len(),
-                    sender
+    
+            RuntimeEvent::NetworkPacket {
+                packet,
+                sender,
+            } => {
+    
+                context.discovery.handle_packet(
+                    packet,
+                    sender,
+                    context.local_node_id,
+                    context.registry,
                 );
+    
             }
+    
+            RuntimeEvent::HeartbeatTick => {
+                // next
+            }
+    
         }
     }
 }

@@ -1,15 +1,14 @@
-use crate::protocol::DiscoverMessage;
-use tokio::net::UdpSocket;
 use crate::constants;
+use crate::protocol::Packet;
+use tokio::net::UdpSocket;
+
 pub struct Transport {
     udp_socket: Option<UdpSocket>,
 }
 
 impl Transport {
     pub fn new() -> Self {
-        Self {
-            udp_socket: None,
-        }
+        Self { udp_socket: None }
     }
 
     pub async fn initialize(&mut self) {
@@ -21,8 +20,8 @@ impl Transport {
         std_socket
             .join_multicast_v4(
                 &constants::MULTICAST_GROUP
-                .parse::<Ipv4Addr>()
-                .expect("Invalid multicast group"),
+                    .parse::<Ipv4Addr>()
+                    .expect("Invalid multicast group"),
                 &Ipv4Addr::UNSPECIFIED,
             )
             .expect("Failed to join multicast group");
@@ -31,24 +30,20 @@ impl Transport {
             .set_nonblocking(true)
             .expect("Failed to set nonblocking");
 
-        let socket = UdpSocket::from_std(std_socket)
-            .expect("Failed to create Tokio socket");
+        let socket = UdpSocket::from_std(std_socket).expect("Failed to create Tokio socket");
 
         self.udp_socket = Some(socket);
 
-        println!("UDP socket listening on 55317");
+        println!("UDP socket listening on {}", constants::MULTICAST_PORT);
     }
 
-    pub async fn receive(
-        &self,
-    ) -> Option<(DiscoverMessage, std::net::SocketAddr)> {
+    pub async fn receive(&self) -> Option<(Packet, std::net::SocketAddr)> {
         let socket = self
             .udp_socket
             .as_ref()
             .expect("UDP socket not initialized");
 
-        let mut buffer = [0u8; 2048];
-
+        let mut buffer = [0u8; 4096];
 
         let (size, sender) = socket
             .recv_from(&mut buffer)
@@ -65,38 +60,37 @@ impl Transport {
             }
         };
 
-        let message = match serde_json::from_str::<DiscoverMessage>(json) {
-            Ok(message) => message,
+        println!("{}", json);
+
+        let packet = match serde_json::from_str::<Packet>(json) {
+            Ok(packet) => packet,
             Err(err) => {
-                println!("Invalid discovery packet: {}", err);
+                println!("Invalid packet: {}", err);
                 return None;
             }
         };
 
-        if !message.is_valid() {
-            println!("Invalid discovery packet");
-            return None;
-        }
-
-        Some((message, sender))
+        Some((packet, sender))
     }
 
-    pub async fn multicast(&self, data: &[u8]) {
+    pub async fn send(&self, packet: &Packet) {
         let socket = self
             .udp_socket
             .as_ref()
             .expect("UDP socket not initialized");
 
-            let address = format!(
-                "{}:{}",
-                constants::MULTICAST_GROUP,
-                constants::MULTICAST_PORT
-            );
-            
-            socket
-                .send_to(data, &address)
-                .await
-                .expect("Failed to send multicast packet");
+        let data = serde_json::to_vec(packet).expect("Failed to serialize packet");
+
+        let address = format!(
+            "{}:{}",
+            constants::MULTICAST_GROUP,
+            constants::MULTICAST_PORT
+        );
+
+        socket
+            .send_to(&data, &address)
+            .await
+            .expect("Failed to send multicast packet");
 
         println!("Multicasted {} bytes", data.len());
     }
